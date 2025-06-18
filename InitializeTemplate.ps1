@@ -14,11 +14,11 @@ if (-not [String]::IsNullOrWhiteSpace($InputScope)) {
 $ProjectScope = "ProjectScope."
 
 Write-Host "Your new com.$($InputScope.ToLower())$($InputName.ToLower()) project is being created..."
-Remove-Item -Path ".\Readme.md"
+Remove-Item -Path ".\README.md"
 Remove-Item -Path ".\$ProjectScope$ProjectName\Assets\Samples"
 $oldPackageRoot = ".\$ProjectScope$ProjectName\Packages\com.$($ProjectScope.ToLower())$($ProjectName.ToLower())"
-Copy-Item -Path "$oldPackageRoot\Documentation~\Readme.md" `
-  -Destination ".\Readme.md"
+Copy-Item -Path "$oldPackageRoot\Documentation~\README.md" `
+  -Destination ".\README.md"
 Rename-Item -Path "$oldPackageRoot\Runtime\$ProjectScope$ProjectName.asmdef" `
   -NewName "$InputScope$InputName.asmdef"
 Rename-Item -Path "$oldPackageRoot\Editor\$ProjectScope$ProjectName.Editor.asmdef" `
@@ -141,3 +141,4 @@ Set-Location ".\$InputScope$InputName\Assets"
 cmd /c mklink /D "Samples" "..\..\$InputScope$InputName\Packages\com.$($InputScope.ToLower())$($InputName.ToLower())\Samples~"
 Set-Location "..\.."
 Remove-Item -Path "InitializeTemplate.ps1"
+Remove-Item -Path "InitializeTemplate.sh"
