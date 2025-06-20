@@ -35,37 +35,6 @@ if [[ "$(uname)" != "Darwin" ]]; then
   fi
 fi
 
-# Remove and rename files/directories
-rm -f ./README.md
-rm -rf ./$ProjectScope$ProjectName/Assets/Samples 2>/dev/null || true
-oldPackageRoot="./$ProjectScope$ProjectName/Packages/com.${ProjectScopeLower}${ProjectNameLower}"
-
-# Copy readme - use uppercase README.md
-if [ -f "$oldPackageRoot/Documentation~/README.md" ]; then
-  cp "$oldPackageRoot/Documentation~/README.md" ./README.md
-else
-  # Fall back to other possible filename variations
-  if [ -f "$oldPackageRoot/Documentation~/Readme.md" ]; then
-    cp "$oldPackageRoot/Documentation~/Readme.md" ./README.md
-  fi
-fi
-
-# Rename assembly definition files
-mv "$oldPackageRoot/Runtime/$ProjectScope$ProjectName.asmdef" \
-   "$oldPackageRoot/Runtime/$InputScope$InputName.asmdef"
-mv "$oldPackageRoot/Editor/$ProjectScope$ProjectName.Editor.asmdef" \
-   "$oldPackageRoot/Editor/$InputScope$InputName.Editor.asmdef"
-mv "$oldPackageRoot/Tests/$ProjectScope$ProjectName.Tests.asmdef" \
-   "$oldPackageRoot/Tests/$InputScope$InputName.Tests.asmdef"
-mv "$oldPackageRoot/Samples~/Demo/$ProjectScope$ProjectName.Demo.asmdef" \
-   "$oldPackageRoot/Samples~/Demo/$InputScope$InputName.Tests.asmdef"
-
-# Rename package directory
-mv "$oldPackageRoot" "./$ProjectScope$ProjectName/Packages/com.${InputScopeLower}${InputNameLower}"
-
-# Rename project directory
-mv "./$ProjectScope$ProjectName" "./$InputScope$InputName"
-
 # Function to perform cross-platform sed replace with proper escaping
 # Usage: sed_replace "pattern" "replacement" "file"
 sed_replace() {
@@ -87,6 +56,55 @@ sed_replace() {
     LC_ALL=C sed -i "s/${pattern}/${replacement}/g" "${file}"
   fi
 }
+
+# Remove and rename files/directories
+rm -f ./README.md
+rm -rf ./$ProjectScope$ProjectName/Assets/Samples 2>/dev/null || true
+oldPackageRoot="./$ProjectScope$ProjectName/Packages/com.${ProjectScopeLower}${ProjectNameLower}"
+
+# Copy readme - use uppercase README.md
+if [ -f "$oldPackageRoot/Documentation~/README.md" ]; then
+  cp "$oldPackageRoot/Documentation~/README.md" ./README.md
+else
+  # Fall back to other possible filename variations
+  if [ -f "$oldPackageRoot/Documentation~/Readme.md" ]; then
+    cp "$oldPackageRoot/Documentation~/Readme.md" ./README.md
+  fi
+fi
+
+# Explicitly update package.json to ensure all fields are correctly replaced
+packageJsonFile="$oldPackageRoot/package.json"
+if [ -f "$packageJsonFile" ]; then
+  echo "Updating package.json..."
+  
+  # Update package name (lowercase)
+  sed_replace "com.${ProjectScopeLower}${ProjectNameLower}" "com.${InputScopeLower}${InputNameLower}" "$packageJsonFile"
+  
+  # Update display name (PascalCase)
+  sed_replace "${ProjectScope}${ProjectName}" "${InputScope}${InputName}" "$packageJsonFile"
+  
+  # Update author name
+  sed_replace "$ProjectAuthor" "$InputAuthor" "$packageJsonFile"
+  
+  # Update GitHub URLs
+  sed_replace "github.com/$ProjectAuthor/com.${ProjectScopeLower}${ProjectNameLower}" "github.com/$InputAuthor/com.${InputScopeLower}${InputNameLower}" "$packageJsonFile"
+fi
+
+# Rename assembly definition files
+mv "$oldPackageRoot/Runtime/$ProjectScope$ProjectName.asmdef" \
+   "$oldPackageRoot/Runtime/$InputScope$InputName.asmdef"
+mv "$oldPackageRoot/Editor/$ProjectScope$ProjectName.Editor.asmdef" \
+   "$oldPackageRoot/Editor/$InputScope$InputName.Editor.asmdef"
+mv "$oldPackageRoot/Tests/$ProjectScope$ProjectName.Tests.asmdef" \
+   "$oldPackageRoot/Tests/$InputScope$InputName.Tests.asmdef"
+mv "$oldPackageRoot/Samples~/Demo/$ProjectScope$ProjectName.Demo.asmdef" \
+   "$oldPackageRoot/Samples~/Demo/$InputScope$InputName.Demo.asmdef"
+
+# Rename package directory
+mv "$oldPackageRoot" "./$ProjectScope$ProjectName/Packages/com.${InputScopeLower}${InputNameLower}"
+
+# Rename project directory
+mv "./$ProjectScope$ProjectName" "./$InputScope$InputName"
 
 # Process all files, skipping certain directories and files
 find . -type f -not -path "*/\.*" | grep -v "/Library/" | grep -v "/Obj/" | grep -v "InitializeTemplate" | while read file; do
@@ -180,8 +198,9 @@ find . -type f -not -path "*/\.*" | grep -v "/Library/" | grep -v "/Obj/" | grep
   fi
 done
 
-# Create symbolic link
+# Create symbolic link for Samples - match the PowerShell implementation
 cd "./$InputScope$InputName/Assets" 2>/dev/null || mkdir -p "./$InputScope$InputName/Assets"
+# Use the correct path to Samples~ directory and create a proper symbolic link
 ln -sf "../../$InputScope$InputName/Packages/com.${InputScopeLower}${InputNameLower}/Samples~" "Samples"
 cd ../..
 
