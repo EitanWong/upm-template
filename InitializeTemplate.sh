@@ -1,209 +1,172 @@
 #!/bin/bash
-
-# Copyright (c) Stephen Hodgson. All rights reserved.
+# Copyright (c) Eitan. All rights reserved.
 # Licensed under the MIT License. See LICENSE in the project root for license information.
 
-# Make the script exit on error
-set -e
+# Ensure script is executable
+if [[ ! -x "$0" ]]; then
+  chmod +x "$0"
+fi
 
-# Get user input
+# Collect user input
 read -p "Set Author name: (i.e. your GitHub username) " InputAuthor
 ProjectAuthor="ProjectAuthor"
 read -p "Enter a name for your new project " InputName
 ProjectName="ProjectName"
 read -p "Enter a scope for your new project (optional) " InputScope
 
-# Add dot to scope if provided
-if [ ! -z "$InputScope" ]; then
+# Handle optional scope
+if [ -n "$InputScope" ]; then
   InputScope="$InputScope."
 fi
 
 ProjectScope="ProjectScope."
 
-# Convert to lowercase using tr instead of bash-specific ${var,,} for better compatibility
-InputScopeLower=$(echo "$InputScope" | tr '[:upper:]' '[:lower:]')
-InputNameLower=$(echo "$InputName" | tr '[:upper:]' '[:lower:]')
-ProjectScopeLower=$(echo "$ProjectScope" | tr '[:upper:]' '[:lower:]')
-ProjectNameLower=$(echo "$ProjectName" | tr '[:upper:]' '[:lower:]')
+# Function to convert string to lowercase (compatible with both BSD and GNU)
+to_lower() {
+  echo "$1" | tr '[:upper:]' '[:lower:]'
+}
 
-echo "Your new com.${InputScopeLower}${InputNameLower} project is being created..."
+echo "Your new com.$(to_lower "$InputScope")$(to_lower "$InputName") project is being created..."
+rm -f "./README.md"
+rm -rf "./$ProjectScope$ProjectName/Assets/Samples"
+oldPackageRoot="./$ProjectScope$ProjectName/Packages/com.$(to_lower "$ProjectScope")$(to_lower "$ProjectName")"
+cp "$oldPackageRoot/Documentation~/README.md" "./README.md"
+mv "$oldPackageRoot/Runtime/$ProjectScope$ProjectName.asmdef" "$oldPackageRoot/Runtime/$InputScope$InputName.asmdef"
+mv "$oldPackageRoot/Editor/$ProjectScope$ProjectName.Editor.asmdef" "$oldPackageRoot/Editor/$InputScope$InputName.Editor.asmdef"
+mv "$oldPackageRoot/Tests/$ProjectScope$ProjectName.Tests.asmdef" "$oldPackageRoot/Tests/$InputScope$InputName.Tests.asmdef"
+mv "$oldPackageRoot/Samples~/Demo/$ProjectScope$ProjectName.Demo.asmdef" "$oldPackageRoot/Samples~/Demo/$InputScope$InputName.Demo.asmdef"
+mv "$oldPackageRoot" "./$ProjectScope$ProjectName/Packages/com.$(to_lower "$InputScope")$(to_lower "$InputName")"
+mv "./$ProjectScope$ProjectName" "./$InputScope$InputName"
 
-# Check if Linux system has uuid-runtime for uuidgen
-if [[ "$(uname)" != "Darwin" ]]; then
-  if ! command -v uuidgen &> /dev/null && ! [ -f /proc/sys/kernel/random/uuid ]; then
-    echo "Warning: Neither uuidgen nor /proc/sys/kernel/random/uuid found. GUIDs may not be generated correctly."
-  fi
-fi
+# Process files to replace content
+excludes=("*Library*" "*Obj*" "*InitializeTemplate*")
 
-# Function to perform cross-platform sed replace with proper escaping
-# Usage: sed_replace "pattern" "replacement" "file"
-sed_replace() {
-  local pattern=$1
-  local replacement=$2
-  local file=$3
-  local temp_file="${file}.tmp"
+# Function to perform sed replacement that works on both macOS and Linux
+safe_sed() {
+  local pattern="$1"
+  local replacement="$2"
+  local file="$3"
   
-  # Escape special characters in the pattern and replacement
-  pattern=$(echo "$pattern" | sed 's/[\/&]/\\&/g')
-  replacement=$(echo "$replacement" | sed 's/[\/&]/\\&/g')
-  
-  # Set LC_ALL=C to handle special characters correctly
-  if [[ "$(uname)" == "Darwin" ]]; then
-    # macOS version
-    LC_ALL=C sed -e "s/${pattern}/${replacement}/g" "${file}" > "${temp_file}" && mv "${temp_file}" "${file}"
+  # Try macOS/BSD sed syntax first, fall back to GNU sed if it fails
+  sed -i '' "s/$pattern/$replacement/g" "$file" 2>/dev/null || sed -i "s/$pattern/$replacement/g" "$file"
+}
+
+# Function to generate a UUID
+generate_uuid() {
+  # Try multiple methods to generate UUID
+  if command -v uuidgen &>/dev/null; then
+    uuidgen
+  elif command -v python &>/dev/null; then
+    python -c 'import uuid; print(uuid.uuid4())'
+  elif command -v python3 &>/dev/null; then
+    python3 -c 'import uuid; print(uuid.uuid4())'
   else
-    # Linux version
-    LC_ALL=C sed -i "s/${pattern}/${replacement}/g" "${file}"
+    # Fallback method if no tools are available
+    od -x /dev/urandom | head -1 | awk '{OFS="-"; print $2$3,$4,$5,$6,$7$8$9}'
   fi
 }
 
-# Remove and rename files/directories
-rm -f ./README.md
-rm -rf ./$ProjectScope$ProjectName/Assets/Samples 2>/dev/null || true
-oldPackageRoot="./$ProjectScope$ProjectName/Packages/com.${ProjectScopeLower}${ProjectNameLower}"
+find . -type f | while read -r file; do
+  # Check if file should be excluded
+  valid=true
+  for exclude in "${excludes[@]}"; do
+    if [[ $(dirname "$file") == $exclude || $(dirname "$file") =~ $exclude ]]; then
+      valid=false
+      break
+    fi
+  done
 
-# Copy readme - use uppercase README.md
-if [ -f "$oldPackageRoot/Documentation~/README.md" ]; then
-  cp "$oldPackageRoot/Documentation~/README.md" ./README.md
-else
-  # Fall back to other possible filename variations
-  if [ -f "$oldPackageRoot/Documentation~/Readme.md" ]; then
-    cp "$oldPackageRoot/Documentation~/Readme.md" ./README.md
-  fi
-fi
+  if [ "$valid" = true ]; then
+    updated=false
 
-# Explicitly update package.json to ensure all fields are correctly replaced
-packageJsonFile="$oldPackageRoot/package.json"
-if [ -f "$packageJsonFile" ]; then
-  echo "Updating package.json..."
-  
-  # Update package name (lowercase)
-  sed_replace "com.${ProjectScopeLower}${ProjectNameLower}" "com.${InputScopeLower}${InputNameLower}" "$packageJsonFile"
-  
-  # Update display name (PascalCase)
-  sed_replace "${ProjectScope}${ProjectName}" "${InputScope}${InputName}" "$packageJsonFile"
-  
-  # Update author name
-  sed_replace "$ProjectAuthor" "$InputAuthor" "$packageJsonFile"
-  
-  # Update GitHub URLs
-  sed_replace "github.com/$ProjectAuthor/com.${ProjectScopeLower}${ProjectNameLower}" "github.com/$InputAuthor/com.${InputScopeLower}${InputNameLower}" "$packageJsonFile"
-fi
-
-# Rename assembly definition files
-mv "$oldPackageRoot/Runtime/$ProjectScope$ProjectName.asmdef" \
-   "$oldPackageRoot/Runtime/$InputScope$InputName.asmdef"
-mv "$oldPackageRoot/Editor/$ProjectScope$ProjectName.Editor.asmdef" \
-   "$oldPackageRoot/Editor/$InputScope$InputName.Editor.asmdef"
-mv "$oldPackageRoot/Tests/$ProjectScope$ProjectName.Tests.asmdef" \
-   "$oldPackageRoot/Tests/$InputScope$InputName.Tests.asmdef"
-mv "$oldPackageRoot/Samples~/Demo/$ProjectScope$ProjectName.Demo.asmdef" \
-   "$oldPackageRoot/Samples~/Demo/$InputScope$InputName.Demo.asmdef"
-
-# Rename package directory
-mv "$oldPackageRoot" "./$ProjectScope$ProjectName/Packages/com.${InputScopeLower}${InputNameLower}"
-
-# Rename project directory
-mv "./$ProjectScope$ProjectName" "./$InputScope$InputName"
-
-# Process all files, skipping certain directories and files
-find . -type f -not -path "*/\.*" | grep -v "/Library/" | grep -v "/Obj/" | grep -v "InitializeTemplate" | while read file; do
-  # Process file content if it exists and is a regular file (not binary)
-  if [ -f "$file" ] && file "$file" | grep -q text; then
-    updated=0
-    
-    # Replace PascalCase instances
+    # Rename all PascalCase instances
     if grep -q "$ProjectName" "$file" 2>/dev/null; then
-      sed_replace "$ProjectName" "$InputName" "$file"
-      updated=1
+      safe_sed "$ProjectName" "$InputName" "$file"
+      updated=true
     fi
-    
+
     if grep -q "$ProjectScope" "$file" 2>/dev/null; then
-      sed_replace "$ProjectScope" "$InputScope" "$file"
-      updated=1
+      safe_sed "$ProjectScope" "$InputScope" "$file"
+      updated=true
     fi
-    
+
     if grep -q "$ProjectAuthor" "$file" 2>/dev/null; then
-      sed_replace "$ProjectAuthor" "$InputAuthor" "$file"
-      updated=1
+      safe_sed "$ProjectAuthor" "$InputAuthor" "$file"
+      updated=true
     fi
-    
-    StephenHodgson="StephenHodgson"
-    if grep -q "$StephenHodgson" "$file" 2>/dev/null; then
-      sed_replace "$StephenHodgson" "$InputAuthor" "$file"
-      updated=1
+
+    Eitan="Eitan"
+    if grep -q "$Eitan" "$file" 2>/dev/null; then
+      safe_sed "$Eitan" "$InputAuthor" "$file"
+      updated=true
     fi
-    
-    # Replace lowercase instances
+
+    # Rename all lowercase instances
+    ProjectNameLower=$(to_lower "$ProjectName")
+    InputNameLower=$(to_lower "$InputName")
     if grep -q "$ProjectNameLower" "$file" 2>/dev/null; then
-      sed_replace "$ProjectNameLower" "$InputNameLower" "$file"
-      updated=1
+      safe_sed "$ProjectNameLower" "$InputNameLower" "$file"
+      updated=true
     fi
-    
+
+    ProjectScopeLower=$(to_lower "$ProjectScope")
+    InputScopeLower=$(to_lower "$InputScope")
     if grep -q "$ProjectScopeLower" "$file" 2>/dev/null; then
-      sed_replace "$ProjectScopeLower" "$InputScopeLower" "$file"
-      updated=1
+      safe_sed "$ProjectScopeLower" "$InputScopeLower" "$file"
+      updated=true
     fi
-    
-    # Replace UPPERCASE instances
+
+    # Rename all UPPERCASE instances
     ProjectNameUpper=$(echo "$ProjectName" | tr '[:lower:]' '[:upper:]')
     InputNameUpper=$(echo "$InputName" | tr '[:lower:]' '[:upper:]')
     if grep -q "$ProjectNameUpper" "$file" 2>/dev/null; then
-      sed_replace "$ProjectNameUpper" "$InputNameUpper" "$file"
-      updated=1
+      safe_sed "$ProjectNameUpper" "$InputNameUpper" "$file"
+      updated=true
     fi
-    
+
     ProjectScopeUpper=$(echo "$ProjectScope" | tr '[:lower:]' '[:upper:]')
     InputScopeUpper=$(echo "$InputScope" | tr '[:lower:]' '[:upper:]')
     if grep -q "$ProjectScopeUpper" "$file" 2>/dev/null; then
-      sed_replace "$ProjectScopeUpper" "$InputScopeUpper" "$file"
-      updated=1
+      safe_sed "$ProjectScopeUpper" "$InputScopeUpper" "$file"
+      updated=true
     fi
-    
-    # Update GUIDs
+
+    # Update guids
     if grep -q "#INSERT_GUID_HERE#" "$file" 2>/dev/null; then
-      # Generate a UUID
-      if [[ "$(uname)" == "Darwin" ]]; then
-        # macOS has uuidgen
-        uuid=$(uuidgen | tr -d '-')
-      elif command -v uuidgen &> /dev/null; then
-        # Linux with uuidgen
-        uuid=$(uuidgen | tr -d '-')
-      else
-        # Linux alternative using /proc
-        uuid=$(cat /proc/sys/kernel/random/uuid 2>/dev/null | tr -d '-' || echo "00000000000000000000000000000000")
-      fi
-      sed_replace "#INSERT_GUID_HERE#" "$uuid" "$file"
-      updated=1
+      uuid=$(generate_uuid)
+      safe_sed "#INSERT_GUID_HERE#" "$uuid" "$file"
+      updated=true
     fi
-    
+
     # Update year
     current_year=$(date +"%Y")
     if grep -q "#CURRENT_YEAR#" "$file" 2>/dev/null; then
-      sed_replace "#CURRENT_YEAR#" "$current_year" "$file"
-      updated=1
+      safe_sed "#CURRENT_YEAR#" "$current_year" "$file"
+      updated=true
     fi
-    
-    # Rename files if needed
+
+    # Rename files
     filename=$(basename "$file")
-    if [[ $filename == *"$ProjectName"* ]]; then
-      newname=$(echo "$filename" | sed "s/$ProjectName/$InputName/g")
+    if [[ "$filename" == *"$ProjectName"* ]]; then
+      newname="${filename//$ProjectName/$InputName}"
       mv "$file" "$(dirname "$file")/$newname"
-      updated=1
+      updated=true
     fi
-    
-    if [ $updated -eq 1 ]; then
-      echo "$file"
+
+    if [ "$updated" = true ]; then
+      echo "$filename"
     fi
   fi
 done
 
-# Create symbolic link for Samples - match the PowerShell implementation
-cd "./$InputScope$InputName/Assets" 2>/dev/null || mkdir -p "./$InputScope$InputName/Assets"
-# Use the correct path to Samples~ directory and create a proper symbolic link
-ln -sf "../../$InputScope$InputName/Packages/com.${InputScopeLower}${InputNameLower}/Samples~" "Samples"
-cd ../..
+# Create symbolic link for Samples
+cd "./$InputScope$InputName/Assets" || exit
+ln -s "../../$InputScope$InputName/Packages/com.$(to_lower "$InputScope")$(to_lower "$InputName")/Samples~" "Samples"
+cd "../.." || exit
 
-# Remove this script
-rm -f InitializeTemplate.sh 
-rm -f InitializeTemplate.ps1 
+# Make the script executable before removing it
+chmod +x InitializeTemplate.sh
+
+# Clean up initialization scripts
+rm -f "InitializeTemplate.ps1"
+rm -f "InitializeTemplate.sh" 
