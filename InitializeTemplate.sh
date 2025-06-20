@@ -128,9 +128,9 @@ find . -type f -not -path "*/\.*" | grep -v "/Library/" | grep -v "/Obj/" | grep
       updated=1
     fi
     
-    StephenHodgson="StephenHodgson"
-    if grep -q "$StephenHodgson" "$file" 2>/dev/null; then
-      sed_replace "$StephenHodgson" "$InputAuthor" "$file"
+    Eitan="Eitan"
+    if grep -q "$Eitan" "$file" 2>/dev/null; then
+      sed_replace "$Eitan" "$InputAuthor" "$file"
       updated=1
     fi
     

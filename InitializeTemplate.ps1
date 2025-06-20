@@ -1,4 +1,4 @@
-# Copyright (c) Stephen Hodgson. All rights reserved.
+# Copyright (c) Eitan. All rights reserved.
 # Licensed under the MIT License. See LICENSE in the project root for license information.
 
 $InputAuthor = Read-Host "Set Author name: (i.e. your GitHub username)"
@@ -71,10 +71,10 @@ Get-ChildItem -Path "*"-File -Recurse -Exclude $excludes | ForEach-Object -Proce
 
       $fileContent = Get-Content $($_.FullName) -Raw
 
-      $StephenHodgson = "StephenHodgson"
+      $Eitan = "Eitan"
 
-      if ($fileContent -cmatch $StephenHodgson) {
-        $fileContent -creplace $StephenHodgson, $InputAuthor | Set-Content $($_.FullName) -NoNewline
+      if ($fileContent -cmatch $Eitan) {
+        $fileContent -creplace $Eitan, $InputAuthor | Set-Content $($_.FullName) -NoNewline
         $updated = $true
       }
 
